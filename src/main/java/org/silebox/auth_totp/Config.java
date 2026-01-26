@@ -15,6 +15,7 @@ public class Config {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public String serverName = "Server";
+    public int sessionTimeout = 300;
 
     public static void Load() {
         if (CONFIG_FILE.exists()) {

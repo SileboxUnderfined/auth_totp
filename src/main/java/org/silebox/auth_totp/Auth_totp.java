@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.*;
 
 
@@ -52,6 +53,7 @@ public class Auth_totp implements ModInitializer {
     public static final Map<UUID, GoogleAuthenticatorKey> newUsers = new Hashtable<>();
     private record SavedLocation(RegistryKey<World> dimension, Vec3d pos, float yaw, float pitch) {}
     private static final Map<UUID, SavedLocation> frozenPositions = new HashMap<>();
+    private static final Map<UUID, LocalDateTime> sessions = new HashMap<>();
     public static final String MOD_ID = "auth_totp";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     @Override
@@ -61,6 +63,7 @@ public class Auth_totp implements ModInitializer {
         Config.Load();
 
         ServerPlayConnectionEvents.JOIN.register(this::PlayerJoinEvent);
+        ServerPlayConnectionEvents.DISCONNECT.register(this::PlayerDisconnectEvent);
 
         ServerTickEvents.START_SERVER_TICK.register(this::onServerTick);
 
@@ -85,15 +88,32 @@ public class Auth_totp implements ModInitializer {
         return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.SUCCESS;
     }
 
+    private void PlayerDisconnectEvent(ServerPlayNetworkHandler handler, MinecraftServer server) {
+    ServerPlayerEntity player = handler.player;
+    if (!checkPlayerSession(player)) return;
+
+    sessions.replace(player.getUuid(), LocalDateTime.now());
+    }
+
     private void PlayerJoinEvent(ServerPlayNetworkHandler handler, PacketSender sender, MinecraftServer server) {
         ServerPlayerEntity player = handler.player;
+        boolean playerHasSession = checkPlayerSession(player);
+        if (playerHasSession) {
+            PlayerAllowed(player);
+            return;
+        }
+
         PlayerNotAllowed(player);
 
         if (database.IsUserRegistered(player.getUuid().toString())) {
-            player.sendMessage(Text.literal("To log-in, use /auth login <INSERT CODE>")
-                    .setStyle(Style.EMPTY.withClickEvent(
-                            new ClickEvent.SuggestCommand("/auth login ")
-                    )));
+            player.sendMessage(Text.literal("To log-in, use ")
+                            .append(
+                                    Text.literal("/auth login <INSERT CODE>")
+                                        .setStyle(Style.EMPTY
+                                                .withColor(Formatting.GOLD)
+                                                .withClickEvent(new ClickEvent.SuggestCommand("/auth login ")
+                                        )))
+                            );
         } else {
             final GoogleAuthenticatorKey key = googleAuthenticator.createCredentials();
             String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getStringifiedName(), key.getKey(), Config.INSTANCE.serverName);
@@ -105,10 +125,13 @@ public class Auth_totp implements ModInitializer {
                             .withColor(Formatting.BLUE)
                             .withUnderline(true));
             player.sendMessage(qr_message);
-            player.sendMessage(Text.literal("To register, use /auth register <INSERT CODE FROM AUTHENTICATOR>")
-                    .setStyle(Style.EMPTY.withClickEvent(
-                            new ClickEvent.SuggestCommand("/auth register ")
-                    )));
+            player.sendMessage(Text.literal("To register, use ")
+                        .append(
+                                Text.literal("/auth register <INSERT CODE FROM AUTHENTICATOR>")
+                                .setStyle(Style.EMPTY
+                                        .withColor(Formatting.GOLD)
+                                        .withClickEvent(new ClickEvent.SuggestCommand("/auth register "))))
+                        );
             newUsers.put(player.getUuid(), key);
         }
     }
@@ -204,7 +227,24 @@ public class Auth_totp implements ModInitializer {
         blockedPlayers.remove(player.getUuid());
         frozenPositions.remove(player.getUuid());
 
+        if (sessions.containsKey(player.getUuid())) sessions.replace(player.getUuid(), LocalDateTime.now());
+        else sessions.put(player.getUuid(), LocalDateTime.now());
+
         player.sendMessage(Text.literal("Successful auth!").formatted(Formatting.GREEN), false);
+    }
+
+    private boolean checkPlayerSession(ServerPlayerEntity player) {
+        if (!sessions.containsKey(player.getUuid())) return false;
+
+        LocalDateTime maxTimeout = LocalDateTime.now().minusSeconds(Config.INSTANCE.sessionTimeout);
+        LocalDateTime playerTime = sessions.get(player.getUuid());
+
+        if (playerTime.isBefore(maxTimeout)) {
+            sessions.remove(player.getUuid());
+            return false;
+        }
+
+        return true;
     }
 
     private void onServerTick(MinecraftServer server) {
