@@ -85,9 +85,9 @@ public class Auth_totp implements ModInitializer {
         return !isPlayerBlocked(player);
     }
 
-    private ActionResult UseBlockCallbackEvent(PlayerEntity player, World world, Hand hand, BlockHitResult hitResult) {
-        return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.SUCCESS;
-    }
+        private ActionResult UseBlockCallbackEvent(PlayerEntity player, World world, Hand hand, BlockHitResult hitResult) {
+            return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.PASS;
+        }
 
     private void PlayerDisconnectEvent(ServerPlayNetworkHandler handler, MinecraftServer server) {
     ServerPlayerEntity player = handler.player;
@@ -212,6 +212,8 @@ public class Auth_totp implements ModInitializer {
                 255, false, false
         ));
 
+        player.setInvulnerable(true);
+
         player.addStatusEffect(new StatusEffectInstance(
             StatusEffects.BLINDNESS,
             StatusEffectInstance.INFINITE,
@@ -225,6 +227,7 @@ public class Auth_totp implements ModInitializer {
 
         player.removeStatusEffect(StatusEffects.MINING_FATIGUE);
         player.removeStatusEffect(StatusEffects.BLINDNESS);
+        player.setInvulnerable(false);
         blockedPlayers.remove(player.getUuid());
         frozenPositions.remove(player.getUuid());
 
