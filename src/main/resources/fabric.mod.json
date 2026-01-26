@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "auth_totp",
+  "version": "${version}",
+  "name": "auth_totp",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "GPL-3.0",
+  "icon": "assets/auth_totp/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-datagen": [
+      "org.silebox.auth_totp.client.Auth_totpDataGenerator"
+    ],
+    "main": [
+      "org.silebox.auth_totp.Auth_totp"
+    ]
+  },
+  "mixins": [
+    "auth_totp.mixins.json",
+    {
+      "config": "auth_totp.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
