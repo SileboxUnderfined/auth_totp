@@ -1,6 +1,5 @@
 package org.silebox.auth_totp;
 
-import com.google.gson.Gson;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -46,7 +45,6 @@ import java.util.*;
 
 
 public class Auth_totp implements ModInitializer {
-    private static final Gson GSON = new Gson();
     private static final Path modConfigPath = FabricLoader.getInstance().getConfigDir().resolve("auth_totp");
     private static final Database database = new Database(modConfigPath);
     public static final GoogleAuthenticator googleAuthenticator = new GoogleAuthenticator();
@@ -59,6 +57,8 @@ public class Auth_totp implements ModInitializer {
     @Override
     public void onInitialize() {
         LOGGER.info("Initializing Auth_totp");
+
+        Config.Load();
 
         ServerPlayConnectionEvents.JOIN.register(this::PlayerJoinEvent);
 
@@ -96,7 +96,7 @@ public class Auth_totp implements ModInitializer {
                     )));
         } else {
             final GoogleAuthenticatorKey key = googleAuthenticator.createCredentials();
-            String qr_params = String.format("otpauth://totp/NeArtemiSilebox:%s?secret=%s&issuer=NeArtemiSilebox",player.getStringifiedName(), key.getKey());
+            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getStringifiedName(), key.getKey(), Config.INSTANCE.serverName);
             String qr_encoded = URLEncoder.encode(qr_params);
             String full_url = String.format("https://quickchart.io/qr?text=%s", qr_encoded);
             Text qr_message = Text.literal("Click here to scan QR for google authenticator")
