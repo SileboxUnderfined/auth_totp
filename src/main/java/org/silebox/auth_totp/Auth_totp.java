@@ -37,6 +37,7 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import oshi.util.tuples.Pair;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -53,7 +54,7 @@ public class Auth_totp implements ModInitializer {
     public static final Map<UUID, GoogleAuthenticatorKey> newUsers = new Hashtable<>();
     private record SavedLocation(RegistryKey<World> dimension, Vec3d pos, float yaw, float pitch) {}
     private static final Map<UUID, SavedLocation> frozenPositions = new HashMap<>();
-    private static final Map<UUID, LocalDateTime> sessions = new HashMap<>();
+    private static final Map<UUID, Pair<LocalDateTime, String>> sessions = new HashMap<>();
     public static final String MOD_ID = "auth_totp";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     @Override
@@ -92,7 +93,7 @@ public class Auth_totp implements ModInitializer {
     ServerPlayerEntity player = handler.player;
     if (!checkPlayerSession(player)) return;
 
-    sessions.replace(player.getUuid(), LocalDateTime.now());
+    sessions.replace(player.getUuid(), new Pair<>(LocalDateTime.now(), player.getIp()));
     }
 
     private void PlayerJoinEvent(ServerPlayNetworkHandler handler, PacketSender sender, MinecraftServer server) {
@@ -227,8 +228,8 @@ public class Auth_totp implements ModInitializer {
         blockedPlayers.remove(player.getUuid());
         frozenPositions.remove(player.getUuid());
 
-        if (sessions.containsKey(player.getUuid())) sessions.replace(player.getUuid(), LocalDateTime.now());
-        else sessions.put(player.getUuid(), LocalDateTime.now());
+        if (sessions.containsKey(player.getUuid())) sessions.replace(player.getUuid(), new Pair<>(LocalDateTime.now(), player.getIp()));
+        else sessions.put(player.getUuid(), new Pair<>(LocalDateTime.now(), player.getIp()));
 
         player.sendMessage(Text.literal("Successful auth!").formatted(Formatting.GREEN), false);
     }
@@ -237,9 +238,15 @@ public class Auth_totp implements ModInitializer {
         if (!sessions.containsKey(player.getUuid())) return false;
 
         LocalDateTime maxTimeout = LocalDateTime.now().minusSeconds(Config.INSTANCE.sessionTimeout);
-        LocalDateTime playerTime = sessions.get(player.getUuid());
+        LocalDateTime playerTime = sessions.get(player.getUuid()).getA();
+        String lastIp = sessions.get(player.getUuid()).getB();
 
         if (playerTime.isBefore(maxTimeout)) {
+            sessions.remove(player.getUuid());
+            return false;
+        }
+
+        if (!player.getIp().equals(lastIp)) {
             sessions.remove(player.getUuid());
             return false;
         }
