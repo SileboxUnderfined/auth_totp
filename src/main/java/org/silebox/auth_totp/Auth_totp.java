@@ -112,17 +112,17 @@ public class Auth_totp implements ModInitializer {
                                     Text.literal("/auth login <INSERT CODE>")
                                         .setStyle(Style.EMPTY
                                                 .withColor(Formatting.GOLD)
-                                                .withClickEvent(new ClickEvent.SuggestCommand("/auth login ")
+                                                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/auth login ")
                                         )))
                             );
         } else {
             final GoogleAuthenticatorKey key = googleAuthenticator.createCredentials();
-            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getStringifiedName(), key.getKey(), Config.INSTANCE.serverName);
+            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getEntityName(), key.getKey(), Config.INSTANCE.serverName);
             String qr_encoded = URLEncoder.encode(qr_params);
             String full_url = String.format("https://quickchart.io/qr?text=%s", qr_encoded);
             Text qr_message = Text.literal("Click here to scan QR for google authenticator")
                     .setStyle(Style.EMPTY
-                            .withClickEvent(new ClickEvent.OpenUrl(URI.create(full_url)))
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, full_url))
                             .withColor(Formatting.BLUE)
                             .withUnderline(true));
             player.sendMessage(qr_message);
@@ -131,7 +131,7 @@ public class Auth_totp implements ModInitializer {
                                 Text.literal("/auth register <INSERT CODE FROM AUTHENTICATOR>")
                                 .setStyle(Style.EMPTY
                                         .withColor(Formatting.GOLD)
-                                        .withClickEvent(new ClickEvent.SuggestCommand("/auth register "))))
+                                        .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/auth register "))))
                         );
             newUsers.put(player.getUuid(), key);
         }
@@ -202,7 +202,7 @@ public class Auth_totp implements ModInitializer {
     private void PlayerNotAllowed(ServerPlayerEntity player) {
         frozenPositions.put(player.getUuid(), new SavedLocation(
             player.getEntityWorld().getRegistryKey(),
-            player.getEntityPos(),
+            player.getPos(),
             player.getYaw(),
             player.getPitch()
         ));
@@ -262,13 +262,12 @@ public class Auth_totp implements ModInitializer {
             SavedLocation loc = frozenPositions.get(player.getUuid());
             if (loc == null) continue;
 
-            if (player.getEntityPos().squaredDistanceTo(loc.pos) > 1.0) {
+            if (player.getPos().squaredDistanceTo(loc.pos) > 1.0) {
                 player.teleport(
                         server.getWorld(loc.dimension),
                         loc.pos.x, loc.pos.y, loc.pos.z,
                         Set.of(),
-                        player.getYaw(), player.getPitch(),
-                        false
+                        player.getYaw(), player.getPitch()
                 );
 
                 player.setVelocity(0,0,0);
