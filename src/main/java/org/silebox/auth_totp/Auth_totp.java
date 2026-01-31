@@ -117,7 +117,7 @@ public class Auth_totp implements ModInitializer {
                             );
         } else {
             final GoogleAuthenticatorKey key = googleAuthenticator.createCredentials();
-            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getName().getContent(), key.getKey(), Config.INSTANCE.serverName);
+            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getName().toString().replaceAll("^Literal\\{|\\}$", ""), key.getKey(), Config.INSTANCE.serverName);
             String qr_encoded = URLEncoder.encode(qr_params);
             String full_url = String.format("https://quickchart.io/qr?text=%s", qr_encoded);
             Text qr_message = Text.literal("Click here to scan QR for google authenticator")
