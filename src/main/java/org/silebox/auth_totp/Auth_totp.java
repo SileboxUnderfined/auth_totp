@@ -8,17 +8,26 @@ import net.fabricmc.api.ModInitializer;
 import com.warrenstrange.googleauth.GoogleAuthenticator;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.luckperms.api.LuckPerms;
+import net.luckperms.api.LuckPermsProvider;
+import net.luckperms.api.model.user.User;
+import net.luckperms.api.node.Node;
+import net.luckperms.api.node.types.InheritanceNode;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.command.CommandRegistryAccess;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
@@ -31,7 +40,9 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
@@ -39,7 +50,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import oshi.util.tuples.Pair;
 
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -71,6 +81,8 @@ public class Auth_totp implements ModInitializer {
         PlayerBlockBreakEvents.BEFORE.register(this::PlayerBlockBreakEvent);
 
         UseBlockCallback.EVENT.register(this::UseBlockCallbackEvent);
+        AttackEntityCallback.EVENT.register(this::AttackEntityEvent);
+        UseItemCallback.EVENT.register(this::UseItemEvent);
 
         CommandRegistrationCallback.EVENT.register(this::AuthCommand);
 
@@ -85,9 +97,17 @@ public class Auth_totp implements ModInitializer {
         return !isPlayerBlocked(player);
     }
 
-        private ActionResult UseBlockCallbackEvent(PlayerEntity player, World world, Hand hand, BlockHitResult hitResult) {
-            return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.PASS;
-        }
+    private ActionResult UseBlockCallbackEvent(PlayerEntity player, World world, Hand hand, BlockHitResult hitResult) {
+        return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.PASS;
+    }
+
+    private ActionResult AttackEntityEvent(PlayerEntity player, World world, Hand hand, Entity entity, EntityHitResult hitResult) {
+        return blockedPlayers.contains(player.getUuid()) ? ActionResult.FAIL : ActionResult.PASS;
+    }
+
+    private TypedActionResult<ItemStack> UseItemEvent(PlayerEntity player, World world, Hand hand) {
+        return blockedPlayers.contains(player.getUuid()) ? TypedActionResult.fail(ItemStack.EMPTY) : TypedActionResult.pass(ItemStack.EMPTY);
+    }
 
     private void PlayerDisconnectEvent(ServerPlayNetworkHandler handler, MinecraftServer server) {
     ServerPlayerEntity player = handler.player;
@@ -117,7 +137,7 @@ public class Auth_totp implements ModInitializer {
                             );
         } else {
             final GoogleAuthenticatorKey key = googleAuthenticator.createCredentials();
-            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getName().toString().replaceAll("^Literal\\{|\\}$", ""), key.getKey(), Config.INSTANCE.serverName);
+            String qr_params = String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s",Config.INSTANCE.serverName, player.getName().getLiteralString(), key.getKey(), Config.INSTANCE.serverName);
             String qr_encoded = URLEncoder.encode(qr_params);
             String full_url = String.format("https://quickchart.io/qr?text=%s", qr_encoded);
             Text qr_message = Text.literal("Click here to scan QR for google authenticator")
@@ -149,9 +169,11 @@ public class Auth_totp implements ModInitializer {
 
     private int AuthCommandRegister(CommandContext<ServerCommandSource> commandContext) {
         ServerPlayerEntity player = commandContext.getSource().getPlayer();
-        int code = IntegerArgumentType.getInteger(commandContext, "code");
-
         if (player == null) return -1;
+
+        if (!hasPermission(player, "auth_totp.register")) return -1;
+
+        int code = IntegerArgumentType.getInteger(commandContext, "code");
 
         if (!newUsers.containsKey(player.getUuid())) return -1;
 
@@ -178,6 +200,8 @@ public class Auth_totp implements ModInitializer {
 
         if (player == null) return -1;
 
+        if (!hasPermission(player, "auth_totp.login")) return -1;
+
         if (newUsers.containsKey(player.getUuid())) return -1;
 
         if (!database.IsUserRegistered(player.getUuid().toString())) return -1;
@@ -200,6 +224,15 @@ public class Auth_totp implements ModInitializer {
     }
 
     private void PlayerNotAllowed(ServerPlayerEntity player) {
+        LuckPerms luckPerms = LuckPermsProvider.get();
+        User user = luckPerms.getUserManager().getUser(player.getUuid());
+
+        if (user == null) return;
+
+        Node groupNode = InheritanceNode.builder("unauthed").build();
+
+        user.transientData().add(groupNode);
+
         frozenPositions.put(player.getUuid(), new SavedLocation(
             player.getEntityWorld().getRegistryKey(),
             player.getPos(),
@@ -224,6 +257,13 @@ public class Auth_totp implements ModInitializer {
     }
 
     private void PlayerAllowed(ServerPlayerEntity player) {
+        LuckPerms luckPerms = LuckPermsProvider.get();
+        User user = luckPerms.getUserManager().getUser(player.getUuid());
+
+        if (user == null) return;
+
+        Node groupNode = InheritanceNode.builder("unauthed").build();
+        user.transientData().remove(groupNode);
 
         player.removeStatusEffect(StatusEffects.MINING_FATIGUE);
         player.removeStatusEffect(StatusEffects.BLINDNESS);
@@ -273,5 +313,14 @@ public class Auth_totp implements ModInitializer {
                 player.setVelocity(0,0,0);
             }
         }
+    }
+
+    private boolean hasPermission(ServerPlayerEntity player, String permission) {
+        LuckPerms luckPerms = LuckPermsProvider.get();
+        User user = luckPerms.getUserManager().getUser(player.getUuid());
+
+        if (user == null) return false;
+
+        return user.getCachedData().getPermissionData().checkPermission(permission).asBoolean();
     }
 }

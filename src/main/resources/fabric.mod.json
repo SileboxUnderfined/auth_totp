@@ -28,6 +28,7 @@
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
-    "luckperms": ">=${luckperms_version}"
+    "luckperms": ">=5.4",
+    "fabric-permissions-api-v0": "*"
   }
 }

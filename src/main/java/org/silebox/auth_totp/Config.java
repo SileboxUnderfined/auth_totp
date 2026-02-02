@@ -16,6 +16,7 @@ public class Config {
 
     public String serverName = "Server";
     public int sessionTimeout = 300;
+    public String lp_group = "unauthed";
 
     public static void Load() {
         if (CONFIG_FILE.exists()) {
